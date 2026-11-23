@@ -80,7 +80,7 @@ def task(task_id, **kwargs):
         "goal": f"goal of {task_id}",
         "agent_name": kwargs.pop("agent", "Pi"),
         "source": "exit",
-        "workdir": "D:/.hermes/workspace/demo",
+        "workdir": "<WORKSPACE>/demo",
         "report_path": None,
         "registered_at": STALE,
         "terminal_event_id": None,
@@ -101,7 +101,7 @@ def event(event_id, task_id, status="report_ready", verdict="accepted",
         "verdict": verdict,
         "reason": reason,
         "created_at": created_at,
-        "receipt_path": f"D:/.hermes/workspace/demo/receipts/{event_id}.json",
+        "receipt_path": f"<WORKSPACE>/demo/receipts/{event_id}.json",
     }
     payload.update(extra)
     return payload

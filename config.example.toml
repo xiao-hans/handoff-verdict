@@ -66,7 +66,7 @@ AGENT_HANDOFF_HERMES_AGENT_DIR = "<hermes-agent-dir>"
 
 # Local session id used when an event carries the bare `local` origin. Unset
 # means a bare `local` event stays unrouted with a reason naming this key; a
-# `local:<8-64 chars>` origin is used as-is.
+# `local:<8-128 chars>` origin is used as-is.
 AGENT_HANDOFF_LOCAL_SESSION = "<local-session-id>"
 
 # --- optional: where the dispatcher finds the recorder -------------------
@@ -78,3 +78,30 @@ AGENT_HANDOFF_DATA_ROOT = "<data-root>"
 # handoff.py the router shells out to. Required: with no value the router
 # reports `misconfigured` instead of guessing a sibling checkout.
 AGENT_HANDOFF_SCRIPT = "<path-to>/handoff.py"
+
+# --- optional: the verify lifecycle sweep ---------------------------------
+# Spec §1/§6 and the key table in docs/spec/verify-lifecycle-sweep-20261119.md
+# (§9). All four fall back to the defaults written here, so leaving them out is
+# legal; they exist to be tuned without editing code.
+
+# Age (seconds) after which a `sent` verify doc with no verdict and no live
+# verifier lease goes back to `queued` and consumes one send attempt.
+AGENT_HANDOFF_VERIFY_SENT_TIMEOUT = "900"
+
+# How many stale docs one sweep pass may reclaim at most, so a wedged receiver
+# cannot make the pass unbounded.
+AGENT_HANDOFF_VERIFY_SWEEP_MAX = "20"
+
+# Age (seconds) after which a `nacked` doc is reclaimed, while its nack budget
+# lasts.
+AGENT_HANDOFF_VERIFY_NACK_TIMEOUT = "300"
+
+# How many nack-driven reclaims one doc may spend before it goes `failed` and
+# raises one verify_stalled notice instead of re-arming forever.
+AGENT_HANDOFF_VERIFY_NACK_MAX = "3"
+
+# --- optional: who the recorder wakes for a verification notice -----------
+# Session the recorder wakes for a verify_blocked / verify_stalled notice
+# (Spec §3.4). Empty means the notice still reaches the origin webhook and the
+# status line says the wake was skipped - the router then degrades silently.
+AGENT_HANDOFF_ROUTER_TARGET = ""

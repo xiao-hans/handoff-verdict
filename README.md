@@ -136,12 +136,61 @@ register  ->  tick  ->  signed send  ->  webhook  ->  router  ->  verify
 
 ## 测试 Tests
 
-`tests/` 下 3 个测试文件：`test_handoff.py`（pytest）、`test_agent_routing.py` 与
-`test_webhook_hardening.py`（unittest）。跑全部测试：
+`tests/` 下 5 个测试文件：`test_handoff.py`（pytest）、`test_agent_routing.py`、
+`test_webhook_hardening.py` 与 `test_kanban_watchdog.py`（unittest）、
+`test_kanban_handoff_sync.py`（unittest，覆盖看板投影同步）。跑全部测试：
 
 ```bash
 python -m pytest tests/ -q   # 需先安装 pytest；pytest 会把两个 unittest 文件一起跑
 ```
+
+## Bot 唤醒机制 Bot wake-up chain
+
+签名事件送达接收端只是投递，**真正让 Agent 干活的是 bot 唤醒链**。整条链由三层组成，
+全部配置与提示词都在本仓库内（密钥、真实账号、会话号一律是占位符）：
+
+```text
+handoff.py send ──HMAC POST──> Hermes gateway webhook 平台 (127.0.0.1:8644)
+                                      |  订阅规则匹配 event: agent_task_handoff
+                                      v
+                              唤醒 cron 任务 (deliver=log)
+                                      |  注入唤醒 prompt（只含 task_id / event_id / status）
+                                      v
+                     路由 Agent ——按 prompts/AGENT-RECEIPT-ROUTER-PROMPT.txt 行事
+                                      |  claim -> hermes send -> ack -> verify-open
+                                      v
+                     验收 Agent ——按 prompts/AGENT-VERIFY-PROMPT.txt 行事
+                                        verify-show -> verify-claim -> 只读产物核验 -> verify-ack
+```
+
+1. **webhook 订阅**（Hermes gateway 侧）：`platforms.webhook` 监听 `127.0.0.1:8644`；
+   一条订阅把事件名 `agent_task_handoff` 绑定到 `/webhooks/agent-task-handoff`，
+   校验 `X-Hub-Signature-256`，命中后以模板
+   `接管已注册pi任务：task_id={task_id} event_id={event_id} status={status}` 唤醒一个
+   cron 任务（`deliver=log`）。模板**刻意只含三个标识字段**——载荷里的路径与目标地址
+   一概不进 prompt，路由 Agent 必须回本地注册表取权威数据，通知不等于验收。
+   校验通道同理走 `/webhooks/agent-task-handoff-verify`。
+2. **路由 Agent**（`prompts/AGENT-RECEIPT-ROUTER-PROMPT.txt`）：被唤醒后按固定流程
+   `claim --claimer hermes-webhook --lease-seconds 120` 领取事件，只信注册表；按回执
+   目标 `telegram:<chat_id>[:<thread_id>]` / `local[:<session_id>]` 分通道投递，投前
+   `verify-open` 确认还有没有可活；成功 `ack --verdict accepted`，无法唯一寻址
+   `ack --verdict blocked`，瞬态失败按 60/120/240/480/600 秒退避 `defer`。
+3. **验收 Agent**（`prompts/AGENT-VERIFY-PROMPT.txt`）：独立于路由 Agent 的第二双眼睛，
+   `verify-claim --claimer hermes-verify --lease-seconds 300` 后**只读磁盘上的任务产物**
+   做比对，验收结论写独立台账 `outbox/verify-acks.jsonl`，永不 `hermes send`。
+4. **补投递守卫**：`scripts/agent_handoff_tick.sh` 由每分钟 cron 触发，兜住漏投的
+   回调；`AGENT-ROUTING-NOTES.md` 记录 `--agent-name` / `--origin-target` 约定、
+   `source=pi|claude|receipt|exit|cursor|codex` 判定与地址语法。
+
+## 提示词与规格 prompts/ docs/
+
+- `prompts/AGENT-RECEIPT-ROUTER-PROMPT.txt` — 路由 Agent 的唤醒 prompt（可原文部署）。
+- `prompts/AGENT-VERIFY-PROMPT.txt` — 验收 Agent 的唤醒 prompt。
+- `prompts/AGENT-ROUTING-NOTES.md` — 路由与寻址约定的权威笔记。
+- `docs/AGENTWEBHOOK-PLAN.md` — 总设计：从单 Agent 补投递到多 Agent 路由的演进计划。
+- `docs/spec-webhook-hardening-20261112.md` — webhook 加固规格（幂等、租约、签名、回落）。
+- `docs/spec-agentwebhook-generalization-20261113.md` — pi→通用 Agent 泛化规格（改名与兼容）。
+- `docs/verify-lifecycle-sweep-20261119.md` — 验收通道生命周期清扫规格。
 
 ## 可选的 Hermes 适配器 Optional Hermes adapters
 
